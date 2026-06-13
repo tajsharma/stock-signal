@@ -7,20 +7,29 @@
 // Usage:
 //   node scripts/seed-orders.mjs --dry-run   # print the plan, create nothing
 //   node scripts/seed-orders.mjs             # create the orders
+//   node scripts/seed-orders.mjs --reset     # delete existing seed orders, then reseed
 //   node scripts/seed-orders.mjs --force     # seed even if seed orders already exist
 //
 // Requires the app to be installed with read_orders + write_orders (run
 // `npm run dev` and re-open the app in the admin after a scope change).
 // Orders are tagged "stocksignal-seed" so they're easy to find later.
+//
+// NOTE: dev/trial stores cap orderCreate at 5 new orders per minute, so this
+// script paces itself (~13s/order) and creates ONE order per day (the velocity
+// engine only cares about variant/quantity/date, not how sales are grouped).
+// A full ~90-day seed therefore takes ~18 minutes — run it in the background.
 
 import { PrismaClient } from "@prisma/client";
 
 const API_VERSION = "2026-04";
 const SEED_TAG = "stocksignal-seed";
 const DAYS = 90;
+// Stay under the dev-store cap of 5 orderCreate calls/minute (5/min = 1 per 12s).
+const ORDER_DELAY_MS = 13000;
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const FORCE = process.argv.includes("--force");
+const RESET = process.argv.includes("--reset");
 
 // Deterministic RNG so re-runs produce the same plan (mulberry32).
 function makeRng(seed) {
@@ -53,25 +62,59 @@ async function getSession() {
   const session = await prisma.session.findFirst({ where: { isOnline: false } });
   await prisma.$disconnect();
   if (!session) throw new Error("No offline session in prisma/dev.sqlite — run `npm run dev` and open the app first.");
+  if (session.expires && new Date(session.expires) < new Date()) {
+    throw new Error(
+      `Stored token expired at ${session.expires} — reopen the app in the Shopify ` +
+        "admin (with `npm run dev` running) to refresh it, then re-run this script.",
+    );
+  }
   return session;
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function adminGraphql(session, query, variables) {
-  for (let attempt = 0; attempt < 5; attempt++) {
+  for (let attempt = 0; attempt < 8; attempt++) {
     const res = await fetch(`https://${session.shop}/admin/api/${API_VERSION}/graphql.json`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": session.accessToken },
       body: JSON.stringify({ query, variables }),
     });
-    const json = await res.json();
-    if (json.errors?.some((e) => e.extensions?.code === "THROTTLED")) {
-      await new Promise((r) => setTimeout(r, 2000));
+    // HTTP-level rate limit — respect Retry-After (seconds) if present.
+    if (res.status === 429) {
+      await sleep((Number(res.headers.get("retry-after")) || 5) * 1000);
       continue;
     }
-    if (json.errors) throw new Error(JSON.stringify(json.errors));
+    // Expired/invalid token — fail fast with guidance, don't retry.
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        `Auth failed (HTTP ${res.status}): ${await res.text()}\n` +
+          "The stored offline token is likely expired — reopen the app in the " +
+          "Shopify admin (with `npm run dev` running) to refresh it, then re-run.",
+      );
+    }
+    const json = await res.json();
+    const errors = json.errors;
+    // Shopify returns `errors` as a bare string for some throttle responses,
+    // and as an array of objects otherwise — handle both. Only retry strings
+    // that look like throttling; surface anything else.
+    if (typeof errors === "string") {
+      if (/throttl|too many|exceeded/i.test(errors)) {
+        await sleep(5000);
+        continue;
+      }
+      throw new Error(`GraphQL error: ${errors}`);
+    }
+    if (Array.isArray(errors) && errors.some((e) => e.extensions?.code === "THROTTLED")) {
+      await sleep(2000);
+      continue;
+    }
+    if (Array.isArray(errors) && errors.length > 0) {
+      throw new Error(JSON.stringify(errors));
+    }
     return json.data;
   }
-  throw new Error("Still throttled after 5 retries");
+  throw new Error("Still throttled after 8 retries");
 }
 
 async function fetchVariants(session) {
@@ -125,54 +168,96 @@ function buildOrders(plan) {
   const orders = [];
   for (let daysAgo = DAYS - 1; daysAgo >= 1; daysAgo--) {
     // Sample today's units per variant: integer part + Bernoulli on the fraction.
-    const sold = [];
+    // All of a day's sales go into a single order — the velocity engine reads
+    // units per variant per day, so grouping doesn't matter, and one-per-day
+    // keeps us well under the dev-store 5-orders/minute cap.
+    const lineItems = [];
     for (const v of plan) {
       const expected = v.profile.rate(daysAgo);
       const units = Math.floor(expected) + (rng() < expected % 1 ? 1 : 0);
-      if (units > 0) sold.push({ variantId: v.id, label: v.label, quantity: units });
+      if (units > 0) lineItems.push({ variantId: v.id, quantity: units });
       v.totalUnits = (v.totalUnits ?? 0) + units;
     }
-    if (sold.length === 0) continue;
-    // Split the day's line items into 1–3-item orders at random times of day.
-    for (let i = sold.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [sold[i], sold[j]] = [sold[j], sold[i]];
-    }
-    while (sold.length > 0) {
-      const lineItems = sold.splice(0, 1 + Math.floor(rng() * 3));
-      const date = new Date();
-      date.setUTCDate(date.getUTCDate() - daysAgo);
-      date.setUTCHours(9 + Math.floor(rng() * 11), Math.floor(rng() * 60), 0, 0);
-      orders.push({ processedAt: date.toISOString(), lineItems });
-    }
+    if (lineItems.length === 0) continue;
+    const date = new Date();
+    date.setUTCDate(date.getUTCDate() - daysAgo);
+    date.setUTCHours(9 + Math.floor(rng() * 11), Math.floor(rng() * 60), 0, 0);
+    orders.push({ processedAt: date.toISOString(), lineItems });
   }
   return orders;
 }
 
 async function createOrder(session, order) {
-  const data = await adminGraphql(
-    session,
-    // Only select userErrors: reading the created Order back requires
-    // protected-customer-data approval, which creating it does not.
-    `mutation seedOrder($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
-      orderCreate(order: $order, options: $options) {
-        userErrors { field message }
-      }
-    }`,
-    {
-      order: {
-        processedAt: order.processedAt,
-        financialStatus: "PAID",
-        tags: [SEED_TAG],
-        lineItems: order.lineItems.map(({ variantId, quantity }) => ({ variantId, quantity })),
+  // Dev/trial stores cap orderCreate at 5/min; if we trip it anyway, the limit
+  // is per-minute, so wait it out and retry rather than failing the whole seed.
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const data = await adminGraphql(
+      session,
+      // Only select userErrors: reading the created Order back requires
+      // protected-customer-data approval, which creating it does not.
+      `mutation seedOrder($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
+        orderCreate(order: $order, options: $options) {
+          userErrors { field message }
+        }
+      }`,
+      {
+        order: {
+          processedAt: order.processedAt,
+          financialStatus: "PAID",
+          tags: [SEED_TAG],
+          lineItems: order.lineItems.map(({ variantId, quantity }) => ({ variantId, quantity })),
+        },
+        // BYPASS: don't decrement stock — current inventory levels stay as-is so
+        // days-of-stock-left scenarios remain predictable.
+        options: { inventoryBehaviour: "BYPASS", sendReceipt: false },
       },
-      // BYPASS: don't decrement stock — current inventory levels stay as-is so
-      // days-of-stock-left scenarios remain predictable.
-      options: { inventoryBehaviour: "BYPASS", sendReceipt: false },
-    },
-  );
-  const errors = data.orderCreate.userErrors;
-  if (errors.length > 0) throw new Error(`orderCreate failed: ${JSON.stringify(errors)}`);
+    );
+    const errors = data.orderCreate.userErrors;
+    if (errors.length === 0) return;
+    if (errors.some((e) => /too many attempts/i.test(e.message))) {
+      console.log("    rate-limited; waiting 60s before retrying…");
+      await new Promise((r) => setTimeout(r, 60000));
+      continue;
+    }
+    throw new Error(`orderCreate failed: ${JSON.stringify(errors)}`);
+  }
+  throw new Error("orderCreate still rate-limited after retries");
+}
+
+async function fetchSeedOrderIds(session) {
+  const ids = [];
+  let cursor = null;
+  do {
+    const data = await adminGraphql(
+      session,
+      `query seedOrders($cursor: String) {
+        orders(first: 50, after: $cursor, query: "tag:${SEED_TAG}") {
+          pageInfo { hasNextPage endCursor }
+          nodes { id }
+        }
+      }`,
+      { cursor },
+    );
+    for (const n of data.orders.nodes) ids.push(n.id);
+    const page = data.orders.pageInfo;
+    cursor = page.hasNextPage ? page.endCursor : null;
+  } while (cursor);
+  return ids;
+}
+
+async function deleteSeedOrders(session, ids) {
+  for (const id of ids) {
+    const data = await adminGraphql(
+      session,
+      `mutation seedDelete($orderId: ID!) {
+        orderDelete(orderId: $orderId) { deletedId userErrors { field message } }
+      }`,
+      { orderId: id },
+    );
+    const errors = data.orderDelete.userErrors;
+    if (errors.length > 0) throw new Error(`orderDelete failed: ${JSON.stringify(errors)}`);
+    await new Promise((r) => setTimeout(r, 250));
+  }
 }
 
 const session = await getSession();
@@ -201,22 +286,33 @@ if (!session.scope?.includes("write_orders")) {
 }
 
 const existing = await existingSeedOrderCount(session);
-if (existing > 0 && !FORCE) {
-  console.error(`\n${existing} orders tagged "${SEED_TAG}" already exist — re-running would skew velocities.`);
-  console.error("Pass --force to seed anyway.");
-  process.exit(1);
+if (existing > 0) {
+  if (RESET) {
+    console.log(`Deleting ${existing} existing seed order(s) before reseeding…`);
+    const ids = await fetchSeedOrderIds(session);
+    await deleteSeedOrders(session, ids);
+    console.log("Existing seed orders deleted.\n");
+  } else if (!FORCE) {
+    console.error(`\n${existing} orders tagged "${SEED_TAG}" already exist — re-running would skew velocities.`);
+    console.error("Pass --reset to delete them and reseed cleanly, or --force to add anyway.");
+    process.exit(1);
+  }
 }
+
+const etaMin = Math.ceil((orders.length * ORDER_DELAY_MS) / 60000);
+console.log(`Creating ${orders.length} orders at ~${ORDER_DELAY_MS / 1000}s each (~${etaMin} min)…\n`);
 
 let created = 0;
 try {
   for (const order of orders) {
     await createOrder(session, order);
     created++;
-    if (created % 25 === 0) console.log(`  ${created}/${orders.length} orders created…`);
-    await new Promise((r) => setTimeout(r, 250)); // stay well under the API throttle
+    if (created % 10 === 0) console.log(`  ${created}/${orders.length} orders created…`);
+    await new Promise((r) => setTimeout(r, ORDER_DELAY_MS)); // stay under 5 orders/min
   }
 } catch (error) {
   console.error(`\nFailed after creating ${created}/${orders.length} orders (all tagged "${SEED_TAG}").`);
+  console.error(`Re-run with --reset to clear partial seed and start clean.`);
   throw error;
 }
 console.log(`\nDone: ${created} backdated orders created, tagged "${SEED_TAG}".`);
