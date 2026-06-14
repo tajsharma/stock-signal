@@ -82,3 +82,12 @@ model ShopSync {
   lastBackfillAt DateTime?
   updatedAt      DateTime  @updatedAt
 }
+
+// Per-shop tunable settings. The velocity window is the trailing number of days
+// the engine averages sales over (configurable to 30/60/90 per the spec).
+// Future phases add re-evaluate bottom-slice %, email prefs, etc. here.
+model StoreSettings {
+  shop              String   @id
+  velocityWindowDays Int     @default(30)
+  updatedAt         DateTime @updatedAt
+}

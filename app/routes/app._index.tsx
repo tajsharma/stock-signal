@@ -10,6 +10,15 @@ import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
 import { runBackfill } from "../lib/sync.server";
+import { computeVelocity } from "../lib/velocity.server";
+import { VELOCITY_WINDOWS } from "../lib/settings.server";
+
+// Build a readable label, distinguishing variants of multi-variant products.
+function variantLabel(productTitle: string, variantTitle: string | null) {
+  return variantTitle && variantTitle !== "Default Title"
+    ? `${productTitle} — ${variantTitle}`
+    : productTitle;
+}
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -30,11 +39,29 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     prisma.orderLine.aggregate({ where: { shop }, _sum: { quantity: true } }),
   ]);
 
+  // Phase 2: run the velocity engine over the store's configured window.
+  const velocity = await computeVelocity(shop);
+  const topMovers = [...velocity.variants]
+    .sort((a, b) => b.unitsPerDay - a.unitsPerDay)
+    .slice(0, 8)
+    .map((v) => ({
+      label: variantLabel(v.productTitle, v.variantTitle),
+      unitsInWindow: v.unitsInWindow,
+      unitsPerDay: Number(v.unitsPerDay.toFixed(2)),
+      revenuePerDay: Number(v.revenuePerDay.toFixed(2)),
+      stock: v.inventoryQuantity,
+    }));
+  const sellingCount = velocity.variants.filter((v) => v.unitsPerDay > 0).length;
+
   return {
     lastBackfillAt: sync?.lastBackfillAt?.toISOString() ?? null,
     variantCount,
     orderLineCount,
     totalUnits: units._sum.quantity ?? 0,
+    windowDays: velocity.windowDays,
+    windows: [...VELOCITY_WINDOWS],
+    sellingCount,
+    topMovers,
   };
 };
 
@@ -171,6 +198,14 @@ export default function Index() {
     ["loading", "submitting"].includes(syncFetcher.state) &&
     syncFetcher.formMethod === "POST";
 
+  // Fetcher for changing the velocity window (persists + revalidates loader).
+  const windowFetcher = useFetcher();
+  const changeWindow = (days: number) =>
+    windowFetcher.submit(
+      { windowDays: String(days) },
+      { method: "POST", action: "/app/velocity-window" },
+    );
+
   const shopify = useAppBridge();
   const isLoading =
     ["loading", "submitting"].includes(fetcher.state) &&
@@ -232,6 +267,52 @@ export default function Index() {
               Sync now
             </s-button>
           </s-stack>
+        </s-stack>
+      </s-section>
+
+      <s-section heading="Velocity engine (Phase 2)">
+        <s-paragraph>
+          Units sold per day per variant, averaged over a trailing window. This
+          is the single engine that will feed both the reorder and re-evaluate
+          lists. {data.sellingCount} of {data.variantCount} variants have sold
+          in the current window.
+        </s-paragraph>
+        <s-stack direction="block" gap="base">
+          <s-select
+            label="Trailing window"
+            value={String(data.windowDays)}
+            onChange={(e) => changeWindow(Number(e.currentTarget.value))}
+          >
+            {data.windows.map((w) => (
+              <s-option key={w} value={String(w)}>
+                {w} days
+              </s-option>
+            ))}
+          </s-select>
+
+          <s-table>
+            <s-table-header-row>
+              <s-table-header>Product</s-table-header>
+              <s-table-header>Units ({data.windowDays}d)</s-table-header>
+              <s-table-header>Units/day</s-table-header>
+              <s-table-header>Revenue/day</s-table-header>
+              <s-table-header>Stock</s-table-header>
+            </s-table-header-row>
+            <s-table-body>
+              {data.topMovers.map((m) => (
+                <s-table-row key={m.label}>
+                  <s-table-cell>{m.label}</s-table-cell>
+                  <s-table-cell>{m.unitsInWindow}</s-table-cell>
+                  <s-table-cell>{m.unitsPerDay.toFixed(2)}</s-table-cell>
+                  <s-table-cell>${m.revenuePerDay.toFixed(2)}</s-table-cell>
+                  <s-table-cell>{m.stock}</s-table-cell>
+                </s-table-row>
+              ))}
+            </s-table-body>
+          </s-table>
+          <s-text tone="neutral">
+            Top 8 by velocity. Full ranking and reorder flags arrive in Phase 3.
+          </s-text>
         </s-stack>
       </s-section>
 
