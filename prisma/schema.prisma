@@ -91,5 +91,7 @@ model StoreSettings {
   velocityWindowDays Int      @default(30) // trailing window the engine averages over
   safetyBufferDays   Int      @default(3) // extra days of cushion before flagging reorder
   reorderCoverageDays Int     @default(30) // suggested order = enough to cover this many days
+  reevaluateBottomPercent Int @default(20) // flag the slowest N% of the catalog by revenue velocity
+  minActiveDays      Int      @default(30) // new-product guard: skip items active fewer than this
   updatedAt          DateTime @updatedAt
 }

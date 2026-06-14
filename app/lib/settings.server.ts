@@ -53,6 +53,29 @@ export async function setReorderPolicy(
   });
 }
 
+// Persist the store-level re-evaluate policy (bottom slice % + new-product
+// guard threshold).
+export async function setReevaluatePolicy(
+  shop: string,
+  input: { reevaluateBottomPercent?: number; minActiveDays?: number },
+) {
+  const data: { reevaluateBottomPercent?: number; minActiveDays?: number } = {};
+  if (input.reevaluateBottomPercent !== undefined)
+    data.reevaluateBottomPercent = clampDays(
+      input.reevaluateBottomPercent,
+      1,
+      100,
+      20,
+    );
+  if (input.minActiveDays !== undefined)
+    data.minActiveDays = clampDays(input.minActiveDays, 0, 365, 30);
+  return prisma.storeSettings.upsert({
+    where: { shop },
+    update: data,
+    create: { shop, ...data },
+  });
+}
+
 // Persist a per-product (per-variant) lead time, scoped to the shop so one
 // store can't edit another's data.
 export async function setVariantLeadTime(

@@ -19,6 +19,7 @@ export interface VariantVelocity {
   price: number;
   inventoryQuantity: number;
   leadTimeDays: number; // per-product reorder lead time
+  productCreatedAt: Date; // catalog creation date (unreliable on seeded stores)
 
   windowDays: number;
   unitsInWindow: number; // units sold within the trailing window
@@ -99,6 +100,7 @@ export async function computeVelocity(
       price: v.price,
       inventoryQuantity: v.inventoryQuantity,
       leadTimeDays: v.leadTimeDays,
+      productCreatedAt: v.productCreatedAt,
       windowDays: effectiveWindow,
       unitsInWindow,
       unitsPerDay,
