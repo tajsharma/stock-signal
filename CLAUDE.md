@@ -65,8 +65,8 @@ Deliberately out of scope. Do not add these, even if they seem helpful:
 
 ## Build plan (build ONE phase at a time; test, then commit, then next)
 - **Phase 0** ✅ — scaffold installed and running in the admin.
-- **Phase 0.5** — seed dev store with products + backdated orders (~90 days) so velocity has history.
-- **Phase 1** — data layer: Prisma models (per-product settings/lead time, computed velocity), Admin GraphQL pull of products/inventory/orders, initial backfill, `orders/create` + `app/uninstalled` webhooks.
+- **Phase 0.5** ✅ — seed dev store with products + backdated orders (~90 days) so velocity has history.
+- **Phase 1** ✅ — data layer: Prisma models (per-product settings/lead time, computed velocity), Admin GraphQL pull of products/inventory/orders, initial backfill, `orders/create` + `app/uninstalled` webhooks.
 - **Phase 2** — velocity engine (units/day per variant).
 - **Phase 3** — Surface 1 (Reorder list) + Polaris UI. **First demoable milestone.**
 - **Phase 4** — Surface 2 (Re-evaluate list) + Polaris UI.
