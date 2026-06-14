@@ -4,15 +4,38 @@ import type {
   HeadersFunction,
   LoaderFunctionArgs,
 } from "react-router";
-import { useFetcher } from "react-router";
+import { useFetcher, useLoaderData } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
+import prisma from "../db.server";
+import { runBackfill } from "../lib/sync.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+  const shop = session.shop;
 
-  return null;
+  // Self-initialize: on the very first load for this shop, run the backfill so
+  // the data layer is populated. Subsequent refreshes use the "Sync now"
+  // button. (A production app would do this in a background job.)
+  let sync = await prisma.shopSync.findUnique({ where: { shop } });
+  if (!sync) {
+    await runBackfill(admin, shop);
+    sync = await prisma.shopSync.findUnique({ where: { shop } });
+  }
+
+  const [variantCount, orderLineCount, units] = await Promise.all([
+    prisma.variant.count({ where: { shop } }),
+    prisma.orderLine.count({ where: { shop } }),
+    prisma.orderLine.aggregate({ where: { shop }, _sum: { quantity: true } }),
+  ]);
+
+  return {
+    lastBackfillAt: sync?.lastBackfillAt?.toISOString() ?? null,
+    variantCount,
+    orderLineCount,
+    totalUnits: units._sum.quantity ?? 0,
+  };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -139,7 +162,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Index() {
+  const data = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
+
+  // Separate fetcher for the StockSignal data-layer sync.
+  const syncFetcher = useFetcher<{ variants: number; orderLines: number }>();
+  const isSyncing =
+    ["loading", "submitting"].includes(syncFetcher.state) &&
+    syncFetcher.formMethod === "POST";
 
   const shopify = useAppBridge();
   const isLoading =
@@ -152,13 +182,58 @@ export default function Index() {
     }
   }, [fetcher.data?.product?.id, shopify]);
 
+  useEffect(() => {
+    if (syncFetcher.data) {
+      shopify.toast.show("Sync complete");
+    }
+  }, [syncFetcher.data, shopify]);
+
   const generateProduct = () => fetcher.submit({}, { method: "POST" });
+  const runSync = () =>
+    syncFetcher.submit({}, { method: "POST", action: "/app/sync" });
 
   return (
     <s-page heading="Shopify app template">
       <s-button slot="primary-action" onClick={generateProduct}>
         Generate a product
       </s-button>
+
+      <s-section heading="StockSignal data layer (Phase 1)">
+        <s-paragraph>
+          Local cache of your catalog and order history, used by the velocity
+          engine. Populated on first load; re-sync any time.
+        </s-paragraph>
+        <s-stack direction="block" gap="base">
+          <s-stack direction="inline" gap="large">
+            <s-stack direction="block" gap="none">
+              <s-text type="strong">{data.variantCount}</s-text>
+              <s-text tone="neutral">variants</s-text>
+            </s-stack>
+            <s-stack direction="block" gap="none">
+              <s-text type="strong">{data.orderLineCount}</s-text>
+              <s-text tone="neutral">order lines</s-text>
+            </s-stack>
+            <s-stack direction="block" gap="none">
+              <s-text type="strong">{data.totalUnits}</s-text>
+              <s-text tone="neutral">units sold</s-text>
+            </s-stack>
+          </s-stack>
+          <s-text tone="neutral">
+            Last synced:{" "}
+            {data.lastBackfillAt
+              ? new Date(data.lastBackfillAt).toLocaleString()
+              : "never"}
+          </s-text>
+          <s-stack direction="inline" gap="base">
+            <s-button
+              onClick={runSync}
+              {...(isSyncing ? { loading: true } : {})}
+            >
+              Sync now
+            </s-button>
+          </s-stack>
+        </s-stack>
+      </s-section>
 
       <s-section heading="Congrats on creating a new Shopify app 🎉">
         <s-paragraph>

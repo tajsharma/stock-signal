@@ -32,3 +32,53 @@ model Session {
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
+
+// --- StockSignal Phase 1: data layer ---
+
+// A local snapshot of one sellable product variant, plus the per-product
+// reorder settings the merchant controls. Refreshed by the catalog backfill.
+// Keyed by the Shopify variant GID so upserts are idempotent.
+model Variant {
+  id                String   @id // Shopify ProductVariant GID
+  shop              String
+  productId         String   // Shopify Product GID
+  productTitle      String
+  variantTitle      String?
+  sku               String?
+  price             Float    @default(0) // unit price; used for revenue velocity (Surface 2)
+  inventoryQuantity Int      @default(0) // current on-hand at the single location
+  productStatus     String   @default("ACTIVE")
+  productCreatedAt  DateTime // for the new-product guard (>= 30-60 days active)
+
+  // Per-product reorder settings (tunable; defaults per CLAUDE.md spec).
+  // Stored per variant for simplicity in v1.
+  leadTimeDays     Int @default(7) // days from reorder to restock
+  safetyBufferDays Int @default(3) // extra cushion on top of lead time
+
+  updatedAt DateTime @updatedAt
+
+  @@index([shop])
+}
+
+// One row per order line item. Keyed by the Shopify line-item GID so a
+// re-delivered orders/create webhook (or an overlapping backfill) upserts
+// instead of double-counting. Velocity = SUM(quantity) GROUP BY variant
+// over a trailing window of processedAt.
+model OrderLine {
+  id          String   @id // Shopify LineItem GID
+  shop        String
+  orderId     String   // Shopify Order GID
+  variantId   String?  // null if the variant was since deleted; skipped in velocity
+  quantity    Int
+  processedAt DateTime // order processed date (NOT createdAt — seeds are backdated)
+
+  @@index([shop, variantId, processedAt])
+  @@index([orderId])
+}
+
+// Per-shop sync bookkeeping.
+model ShopSync {
+  shop           String    @id
+  lastBackfillAt DateTime?
+  updatedAt      DateTime  @updatedAt
+}
