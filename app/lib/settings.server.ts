@@ -29,3 +29,40 @@ export async function setVelocityWindow(shop: string, days: number) {
     create: { shop, velocityWindowDays },
   });
 }
+
+// Clamp a settings input to a sane range so a stray value can't break the math.
+function clampDays(value: number, min: number, max: number, fallback: number) {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+// Persist the store-level reorder policy (safety buffer + coverage target).
+export async function setReorderPolicy(
+  shop: string,
+  input: { safetyBufferDays?: number; reorderCoverageDays?: number },
+) {
+  const data: { safetyBufferDays?: number; reorderCoverageDays?: number } = {};
+  if (input.safetyBufferDays !== undefined)
+    data.safetyBufferDays = clampDays(input.safetyBufferDays, 0, 60, 3);
+  if (input.reorderCoverageDays !== undefined)
+    data.reorderCoverageDays = clampDays(input.reorderCoverageDays, 1, 180, 30);
+  return prisma.storeSettings.upsert({
+    where: { shop },
+    update: data,
+    create: { shop, ...data },
+  });
+}
+
+// Persist a per-product (per-variant) lead time, scoped to the shop so one
+// store can't edit another's data.
+export async function setVariantLeadTime(
+  shop: string,
+  variantId: string,
+  leadTimeDays: number,
+) {
+  const value = clampDays(leadTimeDays, 0, 365, 7);
+  return prisma.variant.updateMany({
+    where: { id: variantId, shop },
+    data: { leadTimeDays: value },
+  });
+}

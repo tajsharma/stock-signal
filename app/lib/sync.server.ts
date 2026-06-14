@@ -104,8 +104,8 @@ interface ProductsResponse {
 }
 
 // Pull the full catalog (products + variants + current inventory) and upsert a
-// local Variant row per variant. Existing per-product settings (leadTimeDays,
-// safetyBufferDays) are preserved on update.
+// local Variant row per variant. The per-product leadTimeDays setting is
+// preserved on update.
 export async function backfillCatalog(
   admin: AdminApiContext,
   shop: string,
@@ -137,7 +137,7 @@ export async function backfillCatalog(
         await prisma.variant.upsert({
           where: { id: v.id },
           // On update, only refresh Shopify-owned fields — never clobber the
-          // merchant's leadTimeDays / safetyBufferDays.
+          // merchant's leadTimeDays setting.
           update: shared,
           create: { id: v.id, ...shared },
         });

@@ -18,6 +18,7 @@ export interface VariantVelocity {
   sku: string | null;
   price: number;
   inventoryQuantity: number;
+  leadTimeDays: number; // per-product reorder lead time
 
   windowDays: number;
   unitsInWindow: number; // units sold within the trailing window
@@ -97,6 +98,7 @@ export async function computeVelocity(
       sku: v.sku,
       price: v.price,
       inventoryQuantity: v.inventoryQuantity,
+      leadTimeDays: v.leadTimeDays,
       windowDays: effectiveWindow,
       unitsInWindow,
       unitsPerDay,
