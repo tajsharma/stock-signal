@@ -236,11 +236,13 @@ export async function runBackfill(admin: AdminApiContext, shop: string) {
   return { variants, orderLines };
 }
 
-// Remove all Phase 1 data for a shop (called on app/uninstalled).
+// Remove ALL of a shop's RestockIQ data. Called on app/uninstalled and on
+// the shop/redact compliance webhook (where full erasure is mandatory).
 export async function purgeShopData(shop: string) {
   await prisma.orderLine.deleteMany({ where: { shop } });
   await prisma.variant.deleteMany({ where: { shop } });
   await prisma.shopSync.deleteMany({ where: { shop } });
+  await prisma.storeSettings.deleteMany({ where: { shop } });
 }
 
 // --- orders/create webhook ---

@@ -6,7 +6,7 @@ import {
   type ReevaluateRow,
 } from "./reevaluate.server";
 
-const FROM = process.env.EMAIL_FROM || "StockSignal <onboarding@resend.dev>";
+const FROM = process.env.EMAIL_FROM || "RestockIQ <onboarding@resend.dev>";
 const MAX_ROWS = 10; // keep emails scannable
 
 // Outcome of an attempted send. `sent: false` with a reason is normal (e.g. no
@@ -89,7 +89,7 @@ function wrap(title: string, body: string) {
   return `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:640px;margin:0 auto;color:#202223">
     <h1 style="font-size:20px">${esc(title)}</h1>${body}
     <hr style="border:none;border-top:1px solid #eee;margin:24px 0"/>
-    <p style="font-size:12px;color:#6d7175">Sent by StockSignal. This is advice, not an action — nothing in your store was changed.</p>
+    <p style="font-size:12px;color:#6d7175">Sent by RestockIQ. This is advice, not an action — nothing in your store was changed.</p>
   </div>`;
 }
 
@@ -102,8 +102,8 @@ export async function composeDigest(shop: string) {
     computeReevaluateList(shop),
   ]);
 
-  const subject = `StockSignal weekly: ${reorder.flaggedCount} to reorder, ${reevaluate.flaggedCount} to re-evaluate`;
-  const html = wrap(`StockSignal — ${shopName(shop)}`, [
+  const subject = `RestockIQ weekly: ${reorder.flaggedCount} to reorder, ${reevaluate.flaggedCount} to re-evaluate`;
+  const html = wrap(`RestockIQ — ${shopName(shop)}`, [
     `<h2 style="font-size:16px">🔄 Reorder soon (${reorder.flaggedCount})</h2>`,
     reorderRowsHtml(reorder.rows.filter((r) => r.flagged)),
     `<h2 style="font-size:16px;margin-top:24px">🐌 Re-evaluate (${reevaluate.flaggedCount})</h2>`,

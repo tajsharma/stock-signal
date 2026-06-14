@@ -14,7 +14,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     await db.session.deleteMany({ where: { shop } });
   }
 
-  // Remove the shop's StockSignal data (variants, order history, sync state).
+  // Remove the shop's RestockIQ data (variants, order history, sync state).
   await purgeShopData(shop);
 
   return new Response();

@@ -74,7 +74,7 @@ export default function Notifications() {
         <s-section>
           <s-banner tone="info">
             Email automation is a{" "}
-            <s-text type="strong">StockSignal Pro</s-text> feature. You can set
+            <s-text type="strong">RestockIQ Pro</s-text> feature. You can set
             your preferences here, but the digest and alerts only send on Pro.{" "}
             <s-link href="/app/billing">Upgrade</s-link> to turn them on.
           </s-banner>

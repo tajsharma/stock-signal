@@ -36,7 +36,6 @@ export default function App() {
         <s-link href="/app/reevaluate">Re-evaluate list</s-link>
         <s-link href="/app/notifications">Notifications</s-link>
         <s-link href="/app/billing">Plan &amp; billing</s-link>
-        <s-link href="/app/additional">Additional page</s-link>
       </s-app-nav>
       <Outlet />
     </AppProvider>

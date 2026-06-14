@@ -70,7 +70,7 @@ export default function Billing() {
       <s-section heading="Your plan">
         <s-stack direction="inline" gap="base">
           <s-text type="strong">
-            {isPro ? "StockSignal Pro" : "Free"}
+            {isPro ? "RestockIQ Pro" : "Free"}
           </s-text>
           <s-badge tone={isPro ? "success" : "neutral"}>
             {isPro ? "Active" : "Current"}
@@ -85,7 +85,7 @@ export default function Billing() {
         </s-paragraph>
       </s-section>
 
-      <s-section heading={`StockSignal Pro — ${PRICE}/month`}>
+      <s-section heading={`RestockIQ Pro — ${PRICE}/month`}>
         <s-paragraph>
           Everything in Free, plus automated email so you don't have to check:
         </s-paragraph>

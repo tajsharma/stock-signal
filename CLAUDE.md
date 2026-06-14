@@ -1,7 +1,7 @@
-# StockSignal — Project Context
+# RestockIQ — Project Context
 
 ## What this is
-StockSignal is a Shopify app for small, owner-run stores (roughly <500 SKUs, tens to low-hundreds of orders/month). It tells a merchant **what to reorder and when, before they stock out**, and **what slow/dead inventory to re-evaluate** — using simple sales-velocity math, **not** machine-learning forecasting.
+RestockIQ is a Shopify app for small, owner-run stores (roughly <500 SKUs, tens to low-hundreds of orders/month). It tells a merchant **what to reorder and when, before they stock out**, and **what slow/dead inventory to re-evaluate** — using simple sales-velocity math, **not** machine-learning forecasting.
 
 **Target user:** the small-store owner who does purchasing by gut, gets caught out by stockouts, and is priced out of $49–199/month forecasting tools (Prediko, Cogsy, etc.).
 

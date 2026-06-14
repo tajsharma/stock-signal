@@ -76,7 +76,7 @@ export default function ReevaluateList() {
       <s-section>
         <s-banner tone="info">
           Advisory only. These are slow or dead sellers tying up cash — worth a
-          look (discount, bundle, delist), but StockSignal never changes
+          look (discount, bundle, delist), but RestockIQ never changes
           anything for you.
         </s-banner>
       </s-section>

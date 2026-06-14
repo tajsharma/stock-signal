@@ -10,7 +10,7 @@ import prisma from "./db.server";
 
 // The single paid tier. Free users get the in-app reorder + re-evaluate lists;
 // Pro unlocks automated email (weekly digest + urgent reorder alerts).
-export const PAID_PLAN = "StockSignal Pro";
+export const PAID_PLAN = "RestockIQ Pro";
 
 // Use Shopify's billing test mode outside production so subscriptions can be
 // approved without a real charge. Tunable via SHOPIFY_BILLING_TEST.

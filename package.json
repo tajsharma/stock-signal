@@ -1,5 +1,5 @@
 {
-  "name": "stock-signal",
+  "name": "restock-iq",
   "private": true,
   "scripts": {
     "build": "react-router build",
