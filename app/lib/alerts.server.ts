@@ -19,6 +19,8 @@ export async function processUrgentAlerts(
     return { sent: false, reason: "no-variants" };
 
   const settings = await getStoreSettings(shop);
+  // Email automation is a Pro feature; the in-app lists stay free.
+  if (settings.plan !== "pro") return { sent: false, reason: "upgrade-required" };
   if (!settings.urgentAlertsEnabled)
     return { sent: false, reason: "alerts-disabled" };
   if (!settings.digestEmail) return { sent: false, reason: "no-recipient" };

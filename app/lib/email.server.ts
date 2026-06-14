@@ -117,6 +117,8 @@ export async function composeDigest(shop: string) {
 // no API key — never throws.
 export async function sendDigest(shop: string): Promise<SendResult> {
   const settings = await getStoreSettings(shop);
+  // Email automation is a Pro feature; the in-app lists stay free.
+  if (settings.plan !== "pro") return { sent: false, reason: "upgrade-required" };
   if (!settings.digestEnabled) return { sent: false, reason: "digest-disabled" };
   if (!settings.digestEmail) return { sent: false, reason: "no-recipient" };
 

@@ -103,5 +103,9 @@ model StoreSettings {
   digestEnabled       Boolean  @default(true) // send the weekly digest
   urgentAlertsEnabled Boolean  @default(true) // send urgent "reorder now" alerts
 
+  // Phase 6 billing. Mirrors Shopify's subscription state so email gating works
+  // outside an admin request (cron, webhooks). "free" | "pro".
+  plan String @default("free")
+
   updatedAt          DateTime @updatedAt
 }

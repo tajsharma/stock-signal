@@ -19,6 +19,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     digestEnabled: settings.digestEnabled,
     urgentAlertsEnabled: settings.urgentAlertsEnabled,
     emailConfigured: Boolean(process.env.RESEND_API_KEY),
+    isPro: settings.plan === "pro",
   };
 };
 
@@ -69,6 +70,16 @@ export default function Notifications() {
 
   return (
     <s-page heading="Notifications">
+      {!data.isPro && (
+        <s-section>
+          <s-banner tone="info">
+            Email automation is a{" "}
+            <s-text type="strong">StockSignal Pro</s-text> feature. You can set
+            your preferences here, but the digest and alerts only send on Pro.{" "}
+            <s-link href="/app/billing">Upgrade</s-link> to turn them on.
+          </s-banner>
+        </s-section>
+      )}
       {!data.emailConfigured && (
         <s-section>
           <s-banner tone="warning">

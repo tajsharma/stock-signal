@@ -3,10 +3,23 @@ import { Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
-import { authenticate } from "../shopify.server";
+import { authenticate, PAID_PLAN, BILLING_TEST } from "../shopify.server";
+import { recordPlan } from "../lib/billing.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+  const { billing, session } = await authenticate.admin(request);
+
+  // Keep our mirrored plan in sync with Shopify on every app load, so email
+  // gating (cron/webhooks) reflects the current subscription. Best-effort.
+  try {
+    const { hasActivePayment } = await billing.check({
+      plans: [PAID_PLAN],
+      isTest: BILLING_TEST,
+    });
+    await recordPlan(session.shop, hasActivePayment);
+  } catch (error) {
+    console.error("Billing sync failed:", error);
+  }
 
   // eslint-disable-next-line no-undef
   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
@@ -22,6 +35,7 @@ export default function App() {
         <s-link href="/app/reorder">Reorder list</s-link>
         <s-link href="/app/reevaluate">Re-evaluate list</s-link>
         <s-link href="/app/notifications">Notifications</s-link>
+        <s-link href="/app/billing">Plan &amp; billing</s-link>
         <s-link href="/app/additional">Additional page</s-link>
       </s-app-nav>
       <Outlet />
