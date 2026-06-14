@@ -55,6 +55,10 @@ model Variant {
   // safety buffer + coverage target are store-wide policy (see StoreSettings).
   leadTimeDays Int @default(7) // days from reorder to restock
 
+  // Throttle for urgent reorder alerts: when we last emailed about this variant
+  // crossing into "reorder now". Not refreshed by catalog sync.
+  lastReorderAlertAt DateTime?
+
   updatedAt DateTime @updatedAt
 
   @@index([shop])
@@ -93,5 +97,11 @@ model StoreSettings {
   reorderCoverageDays Int     @default(30) // suggested order = enough to cover this many days
   reevaluateBottomPercent Int @default(20) // flag the slowest N% of the catalog by revenue velocity
   minActiveDays      Int      @default(30) // new-product guard: skip items active fewer than this
+
+  // Phase 5 notification settings.
+  digestEmail         String? // recipient for digest + alerts (null = not configured)
+  digestEnabled       Boolean  @default(true) // send the weekly digest
+  urgentAlertsEnabled Boolean  @default(true) // send urgent "reorder now" alerts
+
   updatedAt          DateTime @updatedAt
 }

@@ -76,6 +76,34 @@ export async function setReevaluatePolicy(
   });
 }
 
+// Persist the store's notification settings (recipient + toggles).
+export async function setNotificationSettings(
+  shop: string,
+  input: {
+    digestEmail?: string | null;
+    digestEnabled?: boolean;
+    urgentAlertsEnabled?: boolean;
+  },
+) {
+  const data: {
+    digestEmail?: string | null;
+    digestEnabled?: boolean;
+    urgentAlertsEnabled?: boolean;
+  } = {};
+  if (input.digestEmail !== undefined) {
+    const trimmed = input.digestEmail?.trim();
+    data.digestEmail = trimmed ? trimmed : null;
+  }
+  if (input.digestEnabled !== undefined) data.digestEnabled = input.digestEnabled;
+  if (input.urgentAlertsEnabled !== undefined)
+    data.urgentAlertsEnabled = input.urgentAlertsEnabled;
+  return prisma.storeSettings.upsert({
+    where: { shop },
+    update: data,
+    create: { shop, ...data },
+  });
+}
+
 // Persist a per-product (per-variant) lead time, scoped to the shop so one
 // store can't edit another's data.
 export async function setVariantLeadTime(
